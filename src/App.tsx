@@ -17,13 +17,18 @@ function App() {
     if (saved) return parseInt(saved);
     return serviceIds.length > 0 ? serviceIds[0] : 1;
   });
+  
   const [records, setRecords] = useState<Record[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  
+  // Stavy pro heslovací okno
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [passwordDialogMode, setPasswordDialogMode] = useState<'export' | 'import'>('export');
   const [importingEncrypted, setImportingEncrypted] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  
+  // OPRAVA: Místo useState používáme useRef, abychom zabránili zamrznutí v Bolt.new
+  const pendingFileRef = useRef<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRecords = async () => {
@@ -102,31 +107,28 @@ function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setPendingFile(file);
+    // Uložíme soubor BEZPEČNĚ do reference, což zabrání zamrznutí!
+    pendingFileRef.current = file;
     setPasswordDialogMode('import');
-    setImportingEncrypted(true);
     setPasswordDialogOpen(true);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
   const handleImportWithPassword = async (password: string) => {
-    if (!pendingFile) return;
+    const file = pendingFileRef.current;
+    if (!file) return;
+
+    setImportingEncrypted(true);
 
     try {
-      const fileContent = await pendingFile.text();
+      const fileContent = await file.text();
       const { records: importedRecords, error } = await decryptEncryptedJSON(fileContent, password);
 
       if (error) {
         alert(`Import chyba: ${error}`);
-        setPasswordDialogOpen(false);
-        setPendingFile(null);
         return;
       }
 
-      const recordsWithServiceId = importedRecords.map(r => ({
+      const recordsWithServiceId = importedRecords.map((r: any) => ({
         ...r,
         serviceId
       }));
@@ -136,15 +138,32 @@ function App() {
       }
 
       loadRecords();
-      setPasswordDialogOpen(false);
-      setPendingFile(null);
       alert(`Úspěšně importováno ${recordsWithServiceId.length} záznamů.`);
+      
+      setPasswordDialogOpen(false);
+      pendingFileRef.current = null;
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
       alert(`Chyba při importu: ${error instanceof Error ? error.message : 'Neznámá chyba'}`);
       setPasswordDialogOpen(false);
-      setPendingFile(null);
+      pendingFileRef.current = null;
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } finally {
       setImportingEncrypted(false);
+    }
+  };
+
+  const handleCancelPasswordDialog = () => {
+    setPasswordDialogOpen(false);
+    if (passwordDialogMode === 'import') {
+      pendingFileRef.current = null;
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -222,7 +241,7 @@ function App() {
                 <Upload className="w-5 h-5" />
                 Import (Šifrovaný)
               </button>
-              <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportFile} className="hidden" />
+              <input ref={fileInputRef} type="file" id="fileUpload" name="fileUpload" accept=".json" onChange={handleImportFile} className="hidden" />
             </div>
 
             <div className="flex items-center justify-center md:justify-end gap-4 border-t border-gray-700 pt-4 md:border-t-0 md:pt-0">
@@ -274,7 +293,7 @@ function App() {
         onConfirm={
           passwordDialogMode === 'export' ? handleExportWithPassword : handleImportWithPassword
         }
-        onCancel={() => setPasswordDialogOpen(false)}
+        onCancel={handleCancelPasswordDialog}
         loading={importingEncrypted}
       />
     </div>
