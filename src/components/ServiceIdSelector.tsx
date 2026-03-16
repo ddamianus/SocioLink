@@ -26,7 +26,7 @@ export function ServiceIdSelector({ serviceId, serviceIds, onServiceIdChange, on
     }`}>
       <div className="flex items-center gap-2 mb-3">
         <Settings className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-        <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Správa služeb</h3>
+        <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Identifikátor služby</h3>
       </div>
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex gap-2 flex-1">
