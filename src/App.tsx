@@ -162,7 +162,7 @@ function App() {
     console.table(payload);
     setTimeout(() => {
       setSyncing(false);
-      alert(`Synchronizace dokončena.\n${payload.length} záznamů bylo připraveno pro odeslání.`);
+      alert(`Synchronizace dokončena.\n${payload.length} záznamů bylo odesláno do konzole.`);
     }, 1000);
   };
 
@@ -170,7 +170,7 @@ function App() {
     <div className="min-h-screen bg-gray-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* 1. SEKCIE: LOGO A NÁZEV */}
+        {/* 1. SEKCIE: LOGO A NÁZEV (UPRAVENO) */}
         <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-8">
           <img
             src="/logo-msk.png"
@@ -178,11 +178,10 @@ function App() {
             className="h-24 w-auto object-contain rounded-lg shadow-2xl"
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
-          <div className="text-center md:text-left">
-            <h1 className="text-5xl font-extrabold text-white tracking-tight">SocioLink</h1>
-            <p className="text-xl text-blue-400 font-medium mt-1">
-              Databáze žádostí MSK <span className="text-gray-500 text-base font-normal ml-2">by Radim Miklušák</span>
-            </p>
+          <div className="text-center md:text-left flex flex-col">
+            <h1 className="text-5xl font-extrabold text-white tracking-tight leading-tight">SocioLink</h1>
+            <p className="text-xl text-blue-400 font-medium">Databáze žádostí MSK</p>
+            <p className="text-gray-500 text-sm font-normal mt-0.5">by Radim Miklušák</p>
           </div>
         </div>
 
@@ -226,7 +225,7 @@ function App() {
           </div>
         </div>
 
-        {/* 3. SEKCIE: SPRÁVA SLUŽEB (PŘESUNUTO SEM) */}
+        {/* 3. SEKCIE: SPRÁVA SLUŽEB */}
         <div className="mb-8">
           <ServiceIdSelector
             serviceId={serviceId}
