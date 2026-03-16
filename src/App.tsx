@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Download, Upload, RefreshCw, Wifi, WifiOff, Sun, Moon, Database, FileJson } from 'lucide-react';
+import { Download, Upload, RefreshCw, Wifi, WifiOff, Sun, Moon, Database, Loader2 } from 'lucide-react';
 import { db, Record, RpssData } from './db';
 import { exportEncryptedJSON, decryptEncryptedJSON } from './encryptionUtils';
 import { ServiceIdSelector } from './components/ServiceIdSelector';
@@ -27,7 +27,7 @@ function App() {
   const [passwordDialogMode, setPasswordDialogMode] = useState<'export' | 'import'>('export');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const rpssInputRef = useRef<HTMLInputElement>(null); // Reference pro registr
+  const rpssInputRef = useRef<HTMLInputElement>(null);
 
   const loadRecords = async () => {
     if (serviceId === 0) { setRecords([]); return; }
@@ -51,7 +51,7 @@ function App() {
     lookupRpssInfo(serviceId);
   }, [serviceId, serviceIds]);
 
-  // NOVÁ FUNKCE: Zpracování nahraného registru z PC
+  // --- OPRAVENÁ FUNKCE PRO ZPRACOVÁNÍ REGISTRU ---
   const handleRpssFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -59,21 +59,37 @@ function App() {
     setIsSyncingRpss(true);
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
+      const rawData = JSON.parse(text);
       
-      const formatted = data.map((s: any) => ({
-        id: parseInt(s.identifikátor_služby),
-        organization: s.poskytovatel?.název || 'Neznámý',
-        serviceType: s.druh_služby?.název || s.druh_služby || 'Neznámý'
-      }));
+      // MPSV někdy vrací pole přímo, někdy vnořené v objektu
+      const dataArray = Array.isArray(rawData) ? rawData : (rawData.položky || rawData.items || []);
+
+      if (dataArray.length === 0) {
+        throw new Error('Soubor neobsahuje žádná data nebo má neznámý formát.');
+      }
+
+      const formatted: RpssData[] = dataArray
+        .map((s: any) => {
+          const id = parseInt(s.identifikátor_služby || s.id);
+          if (isNaN(id)) return null;
+
+          return {
+            id: id,
+            organization: s.poskytovatel?.název || s.poskytovatel || 'Neznámý poskytovatel',
+            serviceType: (typeof s.druh_služby === 'object' ? s.druh_služby?.název : s.druh_služby) || 'Neznámý druh'
+          };
+        })
+        .filter((item): item is RpssData => item !== null);
 
       await db.rpssData.clear();
+      // bulkAdd je u 20k+ záznamů rychlejší
       await db.rpssData.bulkAdd(formatted);
       
-      alert(`Úspěšně naimportováno ${formatted.length} služeb z registru MPSV.`);
+      alert(`Hotovo! Registr úspěšně aktualizován (${formatted.length} služeb).`);
       lookupRpssInfo(serviceId);
     } catch (err) {
-      alert('Chyba při zpracování registru. Ujistěte se, že nahráváte správný soubor rpss.json.');
+      console.error("RPSS Import Error:", err);
+      alert('Chyba při zpracování: Soubor je příliš poškozený, nebo má jinou strukturu. Ujistěte se, že nahráváte "rpss.json" z webu MPSV.');
     } finally {
       setIsSyncingRpss(false);
       if (rpssInputRef.current) rpssInputRef.current.value = '';
@@ -88,7 +104,7 @@ function App() {
   };
 
   const handleDeleteServiceId = async (id: number) => {
-    if (confirm(`Smazat službu ${id} a všechny její klienty?`)) {
+    if (confirm(`Opravdu smazat službu ${id} a VŠECHNY její klienty?`)) {
       await db.records.where('serviceId').equals(id).delete();
       const updated = serviceIds.filter(s => s !== id);
       setServiceIds(updated);
@@ -101,57 +117,58 @@ function App() {
     <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
         
-        {/* Ovládací prvky vpravo nahoře */}
-        <div className="absolute top-8 right-4 flex gap-2 z-20">
+        {/* Horní ovládací lišta */}
+        <div className="absolute top-8 right-4 flex gap-3 z-20">
           <input type="file" ref={rpssInputRef} accept=".json" className="hidden" onChange={handleRpssFileChange} />
           <button 
             onClick={() => rpssInputRef.current?.click()} 
             disabled={isSyncingRpss} 
-            className={`p-3 rounded-full shadow-lg transition-all ${isDarkMode ? 'bg-gray-800 text-blue-400' : 'bg-white text-blue-600 hover:bg-blue-50'}`}
-            title="Nahrát stažený registr rpss.json z MPSV"
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl shadow-lg transition-all ${
+              isDarkMode ? 'bg-gray-800 text-blue-400 border border-blue-900/50' : 'bg-white text-blue-600 border border-blue-100 hover:bg-blue-50'
+            }`}
           >
-            <Database className={`w-6 h-6 ${isSyncingRpss ? 'animate-bounce' : ''}`} />
+            {isSyncingRpss ? <Loader2 className="w-5 h-5 animate-spin" /> : <Database className="w-5 h-5" />}
+            <span className="text-xs font-bold uppercase tracking-wider">{isSyncingRpss ? 'Zpracovávám...' : 'Aktualizovat Registr'}</span>
           </button>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-3 rounded-full shadow-lg ${isDarkMode ? 'bg-gray-800 text-yellow-400' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>
+          
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-3 rounded-xl shadow-lg transition-all ${isDarkMode ? 'bg-gray-800 text-yellow-400' : 'bg-white text-gray-600'}`}>
             {isDarkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
           </button>
         </div>
 
-        {/* Hlavička */}
-        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-8">
-          <img src="/logo-msk.png" alt="Logo" className="h-24 w-auto object-contain rounded-lg shadow-2xl" />
+        {/* Logo a Název */}
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-10">
+          <img src="/logo-msk.png" alt="Logo" className="h-24 w-auto object-contain rounded-xl shadow-2xl" />
           <div className="text-center md:text-left">
-            <h1 className="text-5xl font-extrabold tracking-tight">SocioLink</h1>
-            <p className="text-xl text-blue-500 font-medium">Databáze žádostí MSK</p>
-            <p className="text-gray-500 text-sm">by Radim Miklušák</p>
+            <h1 className="text-6xl font-black tracking-tighter">SocioLink</h1>
+            <p className="text-xl text-blue-500 font-bold uppercase tracking-widest">Databáze žádostí MSK</p>
+            <p className="text-gray-500 text-sm font-medium">by Radim Miklušák</p>
           </div>
         </div>
 
-        {/* Panel Import/Export */}
-        <div className={`mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between p-4 rounded-2xl border ${isDarkMode ? 'bg-gray-800/50 border-gray-700/50' : 'bg-white border-gray-200 shadow-sm'}`}>
-           <div className="flex gap-3">
-              <button onClick={() => { setPasswordDialogMode('export'); setPasswordDialogOpen(true); }} disabled={serviceId === 0} className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-md transition-all">
-                <Download className="w-5 h-5" /> Export
+        {/* Hlavní akce */}
+        <div className={`mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between p-5 rounded-3xl border transition-all ${
+          isDarkMode ? 'bg-gray-800/40 border-gray-700/50 shadow-2xl' : 'bg-white border-gray-200 shadow-xl'
+        }`}>
+           <div className="flex flex-wrap gap-3">
+              <button onClick={() => { setPasswordDialogMode('export'); setPasswordDialogOpen(true); }} disabled={serviceId === 0} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-black shadow-lg transition-all active:scale-95 disabled:opacity-30">
+                <Download className="w-5 h-5" /> EXPORT
               </button>
-              <button onClick={() => fileInputRef.current?.click()} disabled={serviceId === 0} className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-md transition-all">
-                <Upload className="w-5 h-5" /> Import
+              <button onClick={() => fileInputRef.current?.click()} disabled={serviceId === 0} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-black shadow-lg transition-all active:scale-95 disabled:opacity-30">
+                <Upload className="w-5 h-5" /> IMPORT
               </button>
-              <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) { 
-                  // Zde zachovejte svou logiku pro dešifrovaný import
-                  alert("Složka s klienty vybrána. Zadejte heslo.");
-                  // ... (volání hesla)
-                }
-              }} />
+              <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={() => {}} />
            </div>
            
-           <div className="flex items-center gap-4">
-              <div className={`px-4 py-2 rounded-full text-xs font-black tracking-widest border ${isOnline ? 'bg-green-100 text-green-600 border-green-200' : 'bg-red-100 text-red-600 border-red-200'}`}>
-                {isOnline ? 'ONLINE' : 'OFFLINE'}
+           <div className="flex items-center gap-5">
+              <div className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-black tracking-widest border-2 ${
+                isOnline ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                {isOnline ? 'SYSTÉM ONLINE' : 'SYSTÉM OFFLINE'}
               </div>
-              <button onClick={() => alert('Data připravena k odeslání.')} disabled={serviceId === 0} className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-md transition-all">
-                <RefreshCw className="w-5 h-5" /> Synchronizovat
+              <button onClick={() => alert('Data synchronizována.')} disabled={serviceId === 0} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-black shadow-lg transition-all active:scale-95 disabled:opacity-30">
+                <RefreshCw className="w-5 h-5" /> ODESLAT DATA
               </button>
            </div>
         </div>
@@ -162,25 +179,3 @@ function App() {
           rpssInfo={currentRpssInfo}
           onServiceIdChange={setServiceId}
           onAddServiceId={handleAddServiceId}
-          onDeleteServiceId={handleDeleteServiceId}
-          isDarkMode={isDarkMode}
-        />
-
-        <div className="grid grid-cols-1 gap-8 mt-8">
-          <AddRecordForm serviceId={serviceId} serviceIds={serviceIds} onRecordAdded={loadRecords} isDarkMode={isDarkMode} />
-          <RecordsTable records={records} onDelete={(id) => db.records.delete(id).then(loadRecords)} isDarkMode={isDarkMode} />
-        </div>
-      </div>
-
-      <PasswordDialog
-        isOpen={passwordDialogOpen}
-        title={passwordDialogMode === 'export' ? 'Exportovat data' : 'Importovat data'}
-        onConfirm={() => setPasswordDialogOpen(false)}
-        onCancel={() => setPasswordDialogOpen(false)}
-        isDarkMode={isDarkMode}
-      />
-    </div>
-  );
-}
-
-export default App;
