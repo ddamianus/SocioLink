@@ -6,7 +6,7 @@ interface Props {
   serviceIds: number[];
   onServiceIdChange: (id: number) => void;
   onAddServiceId: (id: number) => void;
-  isDarkMode: boolean; // Přidáno
+  isDarkMode: boolean;
 }
 
 export function ServiceIdSelector({ serviceId, serviceIds, onServiceIdChange, onAddServiceId, isDarkMode }: Props) {
@@ -32,6 +32,8 @@ export function ServiceIdSelector({ serviceId, serviceIds, onServiceIdChange, on
         <div className="flex gap-2 flex-1">
           <input
             type="number"
+            id="serviceNumberInput"
+            name="serviceNumberInput"
             placeholder="Zadejte číslo služby..."
             className={`flex-1 px-3 py-2 rounded-lg outline-none transition-all ${
               isDarkMode 
