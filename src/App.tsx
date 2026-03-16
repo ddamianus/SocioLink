@@ -12,10 +12,11 @@ function App() {
     const saved = localStorage.getItem('serviceIds');
     return saved ? JSON.parse(saved) : [];
   });
+
   const [serviceId, setServiceId] = useState<number>(() => {
     const saved = localStorage.getItem('selectedServiceId');
-    if (saved) return parseInt(saved);
-    return serviceIds.length > 0 ? serviceIds[0] : 1;
+    if (saved && saved !== "0") return parseInt(saved);
+    return serviceIds.length > 0 ? serviceIds[0] : 0;
   });
   
   const [records, setRecords] = useState<Record[]>([]);
@@ -35,6 +36,10 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRecords = async () => {
+    if (serviceId === 0) {
+      setRecords([]);
+      return;
+    }
     const allRecords = await db.records
       .where('serviceId')
       .equals(serviceId)
@@ -63,25 +68,16 @@ function App() {
     handleServiceIdChange(id);
   };
 
-  // --- NOVINKA: Kaskádové mazání služby i klientů ---
   const handleDeleteServiceId = async (id: number) => {
-    if (confirm(`VAROVÁNÍ: Opravdu chcete smazat službu č. ${id}? Dojde k trvalému smazání VŠECH klientů registrovaných pod touto službou!`)) {
-      // 1. Smazání všech záznamů s tímto serviceId z IndexedDB
+    if (confirm(`VAROVÁNÍ: Opravdu chcete smazat službu č. ${id}? Dojde k trvalému smazání VŠECH klientů této služby!`)) {
       await db.records.where('serviceId').equals(id).delete();
-      
-      // 2. Aktualizace seznamu ID služeb
       const updated = serviceIds.filter(s => s !== id);
       setServiceIds(updated);
       localStorage.setItem('serviceIds', JSON.stringify(updated));
       
-      // 3. Pokud jsme smazali aktuálně vybranou službu, přepneme na jinou
-      if (serviceId === id) {
-        const nextId = updated.length > 0 ? updated[0] : 0;
-        handleServiceIdChange(nextId);
-      }
-      
+      const nextId = updated.length > 0 ? updated[0] : 0;
+      handleServiceIdChange(nextId);
       loadRecords();
-      alert(`Služba č. ${id} a její data byla odstraněna.`);
     }
   };
 
@@ -94,7 +90,7 @@ function App() {
       window.removeEventListener('online', handleStatusChange);
       window.removeEventListener('offline', handleStatusChange);
     };
-  }, [serviceId]);
+  }, [serviceId, serviceIds]);
 
   const handleDelete = async (id: number) => {
     if (confirm('Opravdu chcete smazat tento záznam?')) {
@@ -124,6 +120,10 @@ function App() {
   const handleImportClick = () => fileInputRef.current?.click();
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (serviceId === 0) {
+      alert("Není možné importovat data, jelikož nebyla vybrána cílová služba.");
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
     pendingFileRef.current = file;
@@ -152,7 +152,7 @@ function App() {
     setSyncing(true);
     setTimeout(() => {
       setSyncing(false);
-      alert(`Data pro službu ${serviceId} byla odeslána.`);
+      alert(`Synchronizace dokončena pro službu ${serviceId}.`);
     }, 1000);
   };
 
@@ -182,10 +182,10 @@ function App() {
           isDarkMode ? 'bg-gray-800/50 border-gray-700/50 shadow-inner' : 'bg-white border-gray-200 shadow-sm'
         }`}>
           <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-            <button onClick={handleExportClick} disabled={records.length === 0} className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-2.5 px-5 rounded-xl transition-all shadow-md flex items-center gap-2">
+            <button onClick={handleExportClick} disabled={records.length === 0 || serviceId === 0} className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-2.5 px-5 rounded-xl shadow-md flex items-center gap-2">
               <Download className="w-5 h-5" /> Export
             </button>
-            <button onClick={handleImportClick} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-5 rounded-xl transition-all shadow-md flex items-center gap-2">
+            <button onClick={handleImportClick} disabled={serviceId === 0} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-2.5 px-5 rounded-xl shadow-md flex items-center gap-2">
               <Upload className="w-5 h-5" /> Import
             </button>
             <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportFile} className="hidden" />
@@ -193,11 +193,11 @@ function App() {
 
           <div className="flex items-center justify-center md:justify-end gap-4 border-t md:border-t-0 pt-4 md:pt-0 border-gray-200 dark:border-gray-700">
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm ${
-              isOnline ? 'bg-green-100 text-green-600 border border-green-200' : 'bg-red-100 text-red-600 border border-red-200'
+              isOnline ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
             }`}>
               {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />} {isOnline ? 'ONLINE' : 'OFFLINE'}
             </div>
-            <button onClick={handleSync} disabled={records.length === 0 || syncing} className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold py-2.5 px-5 rounded-xl shadow-md flex items-center gap-2">
+            <button onClick={handleSync} disabled={records.length === 0 || syncing || serviceId === 0} className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold py-2.5 px-5 rounded-xl shadow-md flex items-center gap-2">
               <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} /> Odeslat na KÚ MSK
             </button>
           </div>
@@ -209,7 +209,7 @@ function App() {
             serviceIds={serviceIds}
             onServiceIdChange={handleServiceIdChange}
             onAddServiceId={handleAddServiceId}
-            onDeleteServiceId={handleDeleteServiceId} // PŘIDÁNO
+            onDeleteServiceId={handleDeleteServiceId}
             isDarkMode={isDarkMode}
           />
         </div>
@@ -224,7 +224,9 @@ function App() {
 
           <div className={`rounded-2xl border shadow-xl overflow-hidden transition-colors ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <div className={`p-4 border-b transition-colors ${isDarkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
-               <h2 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Přehled žádostí (služba č. {serviceId})</h2>
+               <h2 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                 Přehled žádostí ({serviceId === 0 ? 'žádná služba' : `služba č. ${serviceId}`})
+               </h2>
             </div>
             <RecordsTable records={records} onDelete={handleDelete} isDarkMode={isDarkMode} />
           </div>
