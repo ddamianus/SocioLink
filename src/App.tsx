@@ -215,7 +215,7 @@ function App() {
           </div>
         </div>
 
-        {/* 3. SEKCIE: SPRÁVA SLUŽEB11 */}
+        {/* 3. SEKCIE: SPRÁVA SLUŽEB */}
         <div className="mb-8">
           <ServiceIdSelector
             serviceId={serviceId}
