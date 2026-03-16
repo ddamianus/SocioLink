@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Download, Upload, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { Download, Upload, RefreshCw, Wifi, WifiOff, Sun, Moon } from 'lucide-react';
 import { db, Record } from './db';
 import { exportEncryptedJSON, decryptEncryptedJSON } from './encryptionUtils';
 import { ServiceIdSelector } from './components/ServiceIdSelector';
@@ -22,6 +22,12 @@ function App() {
   const [syncing, setSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   
+  // Stav pro tmavý/světlý režim
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved ? saved === 'dark' : true;
+  });
+
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [passwordDialogMode, setPasswordDialogMode] = useState<'export' | 'import'>('export');
   const [importingEncrypted, setImportingEncrypted] = useState(false);
@@ -37,6 +43,15 @@ function App() {
     setRecords(allRecords);
   };
 
+  useEffect(() => {
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
   const handleServiceIdChange = (id: number) => {
     setServiceId(id);
     localStorage.setItem('selectedServiceId', id.toString());
@@ -51,17 +66,9 @@ function App() {
 
   useEffect(() => {
     loadRecords();
-
     const handleStatusChange = () => setIsOnline(navigator.onLine);
     window.addEventListener('online', handleStatusChange);
     window.addEventListener('offline', handleStatusChange);
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((error) => {
-        console.error('Service Worker registration failed:', error);
-      });
-    }
-
     return () => {
       window.removeEventListener('online', handleStatusChange);
       window.removeEventListener('offline', handleStatusChange);
@@ -90,15 +97,13 @@ function App() {
       link.click();
       URL.revokeObjectURL(url);
       setPasswordDialogOpen(false);
-      alert('Data byla úspěšně exportována a zašifrována.');
+      alert('Data byla úspěšně exportována.');
     } catch (error) {
-      alert(`Chyba při exportu: ${error instanceof Error ? error.message : 'Neznámá chyba'}`);
+      alert(`Chyba: ${error instanceof Error ? error.message : 'Neznámá chyba'}`);
     }
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleImportClick = () => fileInputRef.current?.click();
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -115,21 +120,11 @@ function App() {
     try {
       const fileContent = await file.text();
       const { records: importedRecords, error } = await decryptEncryptedJSON(fileContent, password);
-      if (error) {
-        alert(`Import chyba: ${error}`);
-        return;
-      }
+      if (error) { alert(`Chyba: ${error}`); return; }
       const recordsWithServiceId = importedRecords.map((r: any) => ({ ...r, serviceId }));
-      for (const record of recordsWithServiceId) {
-        await db.records.add(record);
-      }
+      for (const record of recordsWithServiceId) { await db.records.add(record); }
       loadRecords();
-      alert(`Úspěšně importováno ${recordsWithServiceId.length} záznamů.`);
-      setPasswordDialogOpen(false);
-      pendingFileRef.current = null;
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    } catch (error) {
-      alert(`Chyba při importu: ${error instanceof Error ? error.message : 'Neznámá chyba'}`);
+      alert(`Importováno ${recordsWithServiceId.length} záznamů.`);
       setPasswordDialogOpen(false);
       pendingFileRef.current = null;
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -138,39 +133,33 @@ function App() {
     }
   };
 
-  const handleCancelPasswordDialog = () => {
-    setPasswordDialogOpen(false);
-    if (passwordDialogMode === 'import') {
-      pendingFileRef.current = null;
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
   const handleSync = async () => {
-    if (!isOnline) {
-      alert('Chyba: Pro odeslání dat na KÚ MSK musíte být online.');
-      return;
-    }
+    if (!isOnline) { alert('Jste offline.'); return; }
     setSyncing(true);
-    const payload = records.map(r => ({
-      identifikatorSluzby: r.serviceId,
-      druhSluzby: r.druhSluzby,
-      pohlavi: r.pohlavi,
-      okres: r.okres,
-      hash: r.hash
-    }));
+    const payload = records.map(r => ({ hash: r.hash }));
     console.table(payload);
     setTimeout(() => {
       setSyncing(false);
-      alert(`Synchronizace dokončena.\n${payload.length} záznamů bylo odesláno do konzole.`);
+      alert(`Synchronizováno ${payload.length} záznamů.`);
     }, 1000);
   };
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
         
-        {/* 1. SEKCIE: LOGO A NÁZEV (UPRAVENO) */}
+        {/* PŘEPÍNAČ REŽIMU (VPRAVO NAHOŘE) */}
+        <button
+          onClick={() => setIsDarkMode(!isDarkMode)}
+          className={`absolute top-8 right-4 sm:right-8 p-3 rounded-full transition-all duration-300 shadow-lg ${
+            isDarkMode ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' : 'bg-white text-gray-600 hover:bg-gray-100'
+          }`}
+          title={isDarkMode ? 'Přepnout na světlý režim' : 'Přepnout na tmavý režim'}
+        >
+          {isDarkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
+        </button>
+
+        {/* 1. SEKCIE: LOGO A NÁZEV */}
         <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-8">
           <img
             src="/logo-msk.png"
@@ -179,37 +168,39 @@ function App() {
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
           <div className="text-center md:text-left flex flex-col">
-            <h1 className="text-5xl font-extrabold text-white tracking-tight leading-tight">SocioLink</h1>
-            <p className="text-xl text-blue-400 font-medium">Databáze žádostí MSK</p>
-            <p className="text-gray-500 text-sm font-normal mt-0.5">by Radim Miklušák</p>
+            <h1 className={`text-5xl font-extrabold tracking-tight leading-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SocioLink</h1>
+            <p className="text-xl text-blue-500 font-medium">Databáze žádostí MSK</p>
+            <p className={`${isDarkMode ? 'text-gray-500' : 'text-gray-400'} text-sm font-normal mt-0.5`}>by Radim Miklušák</p>
           </div>
         </div>
 
-        {/* 2. SEKCIE: TLAČÍTKA EXPORT/IMPORT/SYNC */}
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-gray-800/50 p-4 rounded-2xl border border-gray-700/50 shadow-inner">
+        {/* 2. SEKCIE: TLAČÍTKA */}
+        <div className={`mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between p-4 rounded-2xl border transition-colors duration-300 ${
+          isDarkMode ? 'bg-gray-800/50 border-gray-700/50 shadow-inner' : 'bg-white border-gray-200 shadow-sm'
+        }`}>
           <div className="flex flex-wrap gap-3 justify-center md:justify-start">
             <button
               onClick={handleExportClick}
               disabled={records.length === 0}
-              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-5 rounded-xl transition-all duration-200 flex items-center gap-2 shadow-lg active:scale-95"
+              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-2.5 px-5 rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2"
             >
-              <Download className="w-5 h-5" />
-              Export (Šifrovaný)
+              <Download className="w-5 h-5" /> Export
             </button>
 
             <button
               onClick={handleImportClick}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-5 rounded-xl transition-all duration-200 flex items-center gap-2 shadow-lg active:scale-95"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-5 rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2"
             >
-              <Upload className="w-5 h-5" />
-              Import (Šifrovaný)
+              <Upload className="w-5 h-5" /> Import
             </button>
-            <input ref={fileInputRef} type="file" id="fileUpload" name="fileUpload" accept=".json" onChange={handleImportFile} className="hidden" />
+            <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportFile} className="hidden" />
           </div>
 
-          <div className="flex items-center justify-center md:justify-end gap-4 border-t border-gray-700 pt-4 md:border-t-0 md:pt-0">
+          <div className="flex items-center justify-center md:justify-end gap-4 border-t md:border-t-0 pt-4 md:pt-0 border-gray-200 dark:border-gray-700">
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm ${
-              isOnline ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-red-900/30 text-red-400 border border-red-800/50'
+              isOnline 
+                ? (isDarkMode ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-green-100 text-green-600 border border-green-200')
+                : (isDarkMode ? 'bg-red-900/30 text-red-400 border border-red-800/50' : 'bg-red-100 text-red-600 border border-red-200')
             }`}>
               {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
               {isOnline ? 'ONLINE' : 'OFFLINE'}
@@ -217,10 +208,9 @@ function App() {
             <button
               onClick={handleSync}
               disabled={records.length === 0 || syncing}
-              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-5 rounded-xl transition-all duration-200 flex items-center gap-2 shadow-lg active:scale-95"
+              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold py-2.5 px-5 rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2"
             >
-              <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Synchronizace...' : 'Odeslat na KÚ MSK'}
+              <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} /> Odeslat na KÚ MSK
             </button>
           </div>
         </div>
@@ -232,24 +222,25 @@ function App() {
             serviceIds={serviceIds}
             onServiceIdChange={handleServiceIdChange}
             onAddServiceId={handleAddServiceId}
+            isDarkMode={isDarkMode}
           />
         </div>
 
         {/* 4. SEKCIE: FORMULÁŘ A TABULKA */}
         <div className="grid grid-cols-1 gap-8">
-          <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl">
-            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+          <div className={`p-6 rounded-2xl border shadow-xl transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <h2 className={`text-xl font-semibold mb-4 flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
               <span className="w-2 h-6 bg-blue-500 rounded-full"></span>
               Nový záznam
             </h2>
-            <AddRecordForm serviceId={serviceId} onRecordAdded={loadRecords} />
+            <AddRecordForm serviceId={serviceId} onRecordAdded={loadRecords} isDarkMode={isDarkMode} />
           </div>
 
-          <div className="bg-gray-800 rounded-2xl border border-gray-700 shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-gray-700 bg-gray-800/50">
-               <h2 className="text-lg font-medium text-white">Přehled žádostí (služba č. {serviceId})</h2>
+          <div className={`rounded-2xl border shadow-xl overflow-hidden transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <div className={`p-4 border-b transition-colors duration-300 ${isDarkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+               <h2 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Přehled žádostí (služba č. {serviceId})</h2>
             </div>
-            <RecordsTable records={records} onDelete={handleDelete} />
+            <RecordsTable records={records} onDelete={handleDelete} isDarkMode={isDarkMode} />
           </div>
         </div>
       </div>
@@ -257,16 +248,10 @@ function App() {
       <PasswordDialog
         isOpen={passwordDialogOpen}
         title={passwordDialogMode === 'export' ? 'Exportovat data' : 'Importovat data'}
-        description={
-          passwordDialogMode === 'export'
-            ? 'Zadejte master heslo pro zašifrování exportovaných dat'
-            : 'Zadejte master heslo pro dešifrování importovaného souboru'
-        }
-        onConfirm={
-          passwordDialogMode === 'export' ? handleExportWithPassword : handleImportWithPassword
-        }
-        onCancel={handleCancelPasswordDialog}
+        onConfirm={passwordDialogMode === 'export' ? handleExportWithPassword : handleImportWithPassword}
+        onCancel={() => setPasswordDialogOpen(false)}
         loading={importingEncrypted}
+        isDarkMode={isDarkMode}
       />
     </div>
   );
