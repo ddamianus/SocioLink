@@ -14,7 +14,7 @@ export interface Record {
 }
 
 export interface RpssData {
-  id: number;
+  id: number; // identifikátor_služby
   organization: string;
   serviceType: string;
 }
